@@ -24,13 +24,16 @@ const __dirname = path.dirname(__filename);
 export const createApp = (): Application => {
   const app = express();
 
+  // CORS - must be FIRST before any other middleware
+  app.use(cors(corsOptions));
+
+  // Handle preflight requests explicitly
+  app.options('*', cors(corsOptions));
+
   // Security middleware
   app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   }));
-
-  // CORS
-  app.use(cors(corsOptions));
 
   // Body parsing
   app.use(express.json({ limit: '10mb' }));
