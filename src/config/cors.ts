@@ -3,6 +3,9 @@ import { env } from './env.js';
 
 const allowedOrigins = env.CORS_ORIGINS.split(',').map((origin) => origin.trim());
 
+// Log CORS config on startup
+console.log('CORS allowed origins:', allowedOrigins);
+
 export const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl requests)
@@ -10,9 +13,15 @@ export const corsOptions: CorsOptions = {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+    // Allow all if wildcard
+    if (allowedOrigins.includes('*')) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.log('CORS blocked origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
