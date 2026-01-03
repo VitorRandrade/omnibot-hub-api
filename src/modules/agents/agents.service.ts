@@ -45,6 +45,33 @@ interface ListParams {
   search?: string;
 }
 
+// Mapeamento de status PT -> EN (banco -> API)
+const statusPtToEn: Record<string, string> = {
+  'ativo': 'online',
+  'inativo': 'offline',
+  'manutencao': 'maintenance',
+  'manutenção': 'maintenance',
+  // Também aceitar valores já em inglês
+  'online': 'online',
+  'offline': 'offline',
+  'maintenance': 'maintenance',
+};
+
+// Mapeamento de status EN -> PT (API -> banco)
+const statusEnToPt: Record<string, string> = {
+  'online': 'ativo',
+  'offline': 'inativo',
+  'maintenance': 'manutencao',
+};
+
+function mapStatusToEn(status: string): string {
+  return statusPtToEn[status?.toLowerCase()] || status || 'offline';
+}
+
+function mapStatusToPt(status: string): string {
+  return statusEnToPt[status?.toLowerCase()] || status || 'inativo';
+}
+
 // Função helper para mapear do banco para resposta da API
 function mapAgentToResponse(agent: AgentDB): AgentResponse {
   const config = agent.configuracoes || {};
@@ -56,7 +83,7 @@ function mapAgentToResponse(agent: AgentDB): AgentResponse {
     name: agent.nome,
     type: agent.tipo,
     avatar: agent.nome?.substring(0, 2).toUpperCase() || 'AG',
-    status: agent.status,
+    status: mapStatusToEn(agent.status),
     description: agent.descricao,
     system_prompt: config.system_prompt || null,
     model: config.model || 'gpt-4',
@@ -87,7 +114,8 @@ export class AgentsService {
 
     if (status) {
       conditions.push(`status = $${paramIndex++}`);
-      values.push(status);
+      // Converter status de EN para PT para buscar no banco
+      values.push(mapStatusToPt(status));
     }
 
     if (search) {
@@ -199,7 +227,8 @@ export class AgentsService {
 
     if (data.status !== undefined) {
       updates.push(`status = $${paramIndex++}`);
-      values.push(data.status);
+      // Converter status de EN para PT ao salvar no banco
+      values.push(mapStatusToPt(data.status));
     }
 
     // Atualizar configuracoes se algum campo relacionado foi alterado
@@ -242,11 +271,14 @@ export class AgentsService {
     }
     const tenantId = userResult.rows[0].tenant_id;
 
+    // Converter status de EN para PT ao salvar no banco
+    const dbStatus = mapStatusToPt(status);
+
     const result = await db.query<AgentDB>(
       `UPDATE agents SET status = $1, updated_at = NOW()
        WHERE id = $2 AND tenant_id = $3
        RETURNING *`,
-      [status, id, tenantId]
+      [dbStatus, id, tenantId]
     );
 
     if (result.rows.length === 0) {
@@ -284,7 +316,7 @@ export class AgentsService {
       const result = await db.query(
         `SELECT
           COUNT(*)::int as total,
-          COUNT(*) FILTER (WHERE status = 'online')::int as online
+          COUNT(*) FILTER (WHERE status = 'ativo' OR status = 'online')::int as online
          FROM agents WHERE tenant_id = $1`,
         [tenantId]
       );
