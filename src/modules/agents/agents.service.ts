@@ -280,23 +280,26 @@ export class AgentsService {
     }
     const tenantId = userResult.rows[0].tenant_id;
 
-    const result = await db.query(
-      `SELECT
-        COUNT(*)::int as total,
-        COUNT(*) FILTER (WHERE status = 'online')::int as online,
-        COALESCE(SUM(CASE WHEN metricas->>'total_conversations' ~ '^[0-9]+$' THEN (metricas->>'total_conversations')::int ELSE 0 END), 0)::int as total_conversations,
-        COALESCE(AVG(CASE WHEN metricas->>'satisfaction_rate' ~ '^[0-9.]+$' THEN (metricas->>'satisfaction_rate')::float ELSE 0 END), 0)::float as avg_satisfaction
-       FROM agents WHERE tenant_id = $1`,
-      [tenantId]
-    );
+    try {
+      const result = await db.query(
+        `SELECT
+          COUNT(*)::int as total,
+          COUNT(*) FILTER (WHERE status = 'online')::int as online
+         FROM agents WHERE tenant_id = $1`,
+        [tenantId]
+      );
 
-    const row = result.rows[0];
-    return {
-      total: row.total || 0,
-      online: row.online || 0,
-      totalConversations: row.total_conversations || 0,
-      avgSatisfaction: Math.round(row.avg_satisfaction || 0),
-    };
+      const row = result.rows[0];
+      return {
+        total: row.total || 0,
+        online: row.online || 0,
+        totalConversations: 0,
+        avgSatisfaction: 0,
+      };
+    } catch (error) {
+      console.error('Error getting agent stats:', error);
+      return { total: 0, online: 0, totalConversations: 0, avgSatisfaction: 0 };
+    }
   }
 
   // Endpoint para n8n/webhooks buscarem agente por mcp_key

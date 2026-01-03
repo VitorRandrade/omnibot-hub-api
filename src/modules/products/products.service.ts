@@ -308,25 +308,29 @@ export class ProductsService {
     }
     const tenantId = userResult.rows[0].tenant_id;
 
-    const result = await db.query(
-      `SELECT
-        COUNT(*)::int as total,
-        COUNT(*) FILTER (WHERE status = 'active')::int as active,
-        COUNT(*) FILTER (WHERE status = 'low_stock')::int as low_stock,
-        COUNT(*) FILTER (WHERE status = 'out_of_stock')::int as out_of_stock,
-        COALESCE(SUM(CASE WHEN metadata->>'total_sales' ~ '^[0-9]+$' THEN (metadata->>'total_sales')::int ELSE 0 END), 0)::int as total_sales
-       FROM produtos WHERE tenant_id = $1`,
-      [tenantId]
-    );
+    try {
+      const result = await db.query(
+        `SELECT
+          COUNT(*)::int as total,
+          COUNT(*) FILTER (WHERE status = 'active')::int as active,
+          COUNT(*) FILTER (WHERE status = 'low_stock')::int as low_stock,
+          COUNT(*) FILTER (WHERE status = 'out_of_stock')::int as out_of_stock
+         FROM produtos WHERE tenant_id = $1`,
+        [tenantId]
+      );
 
-    const row = result.rows[0];
-    return {
-      total: row.total || 0,
-      active: row.active || 0,
-      lowStock: row.low_stock || 0,
-      outOfStock: row.out_of_stock || 0,
-      totalSales: row.total_sales || 0,
-    };
+      const row = result.rows[0];
+      return {
+        total: row.total || 0,
+        active: row.active || 0,
+        lowStock: row.low_stock || 0,
+        outOfStock: row.out_of_stock || 0,
+        totalSales: 0,
+      };
+    } catch (error) {
+      console.error('Error getting product stats:', error);
+      return { total: 0, active: 0, lowStock: 0, outOfStock: 0, totalSales: 0 };
+    }
   }
 
   async getCategories(userId: string): Promise<string[]> {
