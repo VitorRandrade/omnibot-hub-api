@@ -8,7 +8,7 @@ export const createAgentSchema = z.object({
   model: z.string().default('gpt-4'),
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().min(100).max(4000).default(1000),
-  channelIds: z.array(z.string().uuid()).optional(),
+  channels: z.array(z.string()).optional(),
 });
 
 export const updateAgentSchema = z.object({
@@ -20,6 +20,7 @@ export const updateAgentSchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().min(100).max(4000).optional(),
   status: z.enum(['online', 'offline', 'maintenance']).optional(),
+  channels: z.array(z.string()).optional(),
 });
 
 export const updateAgentStatusSchema = z.object({

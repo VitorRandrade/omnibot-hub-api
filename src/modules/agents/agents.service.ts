@@ -93,6 +93,7 @@ function mapAgentToResponse(agent: AgentDB): AgentResponse {
     satisfaction_rate: metrics.satisfaction_rate || 0,
     created_at: agent.created_at,
     updated_at: agent.updated_at,
+    channels: config.channels || [],
   };
 }
 
@@ -178,6 +179,7 @@ export class AgentsService {
       model: data.model || 'gpt-4',
       temperature: data.temperature || 0.7,
       max_tokens: data.maxTokens || 1000,
+      channels: data.channels || [],
     };
 
     const metricas = {
@@ -233,12 +235,14 @@ export class AgentsService {
 
     // Atualizar configuracoes se algum campo relacionado foi alterado
     if (data.systemPrompt !== undefined || data.model !== undefined ||
-        data.temperature !== undefined || data.maxTokens !== undefined) {
+        data.temperature !== undefined || data.maxTokens !== undefined ||
+        data.channels !== undefined) {
       const newConfig = {
         system_prompt: data.systemPrompt ?? current.system_prompt,
         model: data.model ?? current.model,
         temperature: data.temperature ?? current.temperature,
         max_tokens: data.maxTokens ?? current.max_tokens,
+        channels: data.channels ?? current.channels ?? [],
       };
       updates.push(`configuracoes = $${paramIndex++}`);
       values.push(JSON.stringify(newConfig));
