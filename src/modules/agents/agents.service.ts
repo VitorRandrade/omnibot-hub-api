@@ -276,21 +276,27 @@ export class AgentsService {
   async getStats(userId: string): Promise<any> {
     const userResult = await db.query('SELECT tenant_id FROM users WHERE id = $1', [userId]);
     if (userResult.rows.length === 0) {
-      return { total: 0, online: 0, total_conversations: 0, avg_satisfaction: 0 };
+      return { total: 0, online: 0, totalConversations: 0, avgSatisfaction: 0 };
     }
     const tenantId = userResult.rows[0].tenant_id;
 
     const result = await db.query(
       `SELECT
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE status = 'online') as online,
-        COALESCE(SUM((metricas->>'total_conversations')::int), 0) as total_conversations,
-        COALESCE(AVG((metricas->>'satisfaction_rate')::float), 0) as avg_satisfaction
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE status = 'online')::int as online,
+        COALESCE(SUM(CASE WHEN metricas->>'total_conversations' ~ '^[0-9]+$' THEN (metricas->>'total_conversations')::int ELSE 0 END), 0)::int as total_conversations,
+        COALESCE(AVG(CASE WHEN metricas->>'satisfaction_rate' ~ '^[0-9.]+$' THEN (metricas->>'satisfaction_rate')::float ELSE 0 END), 0)::float as avg_satisfaction
        FROM agents WHERE tenant_id = $1`,
       [tenantId]
     );
 
-    return result.rows[0];
+    const row = result.rows[0];
+    return {
+      total: row.total || 0,
+      online: row.online || 0,
+      totalConversations: row.total_conversations || 0,
+      avgSatisfaction: Math.round(row.avg_satisfaction || 0),
+    };
   }
 
   // Endpoint para n8n/webhooks buscarem agente por mcp_key
