@@ -176,6 +176,7 @@ export class ConversationsService {
       );
 
       // Query principal com JOINs para obter dados do cliente e agente
+      // OPTIMIZED: Using LEFT JOIN with aggregated subquery instead of N+1 correlated subquery
       const result = await db.query(
         `SELECT
           c.*,
@@ -185,10 +186,16 @@ export class ConversationsService {
           ct.avatar as customer_avatar,
           a.nome as agent_name,
           COALESCE(a.nome, 'AG') as agent_avatar,
-          (SELECT COUNT(*) FROM mensagens m WHERE m.conversa_id = c.id AND m.lida = false AND m.remetente_tipo = 'customer') as unread_count
+          COALESCE(unread.count, 0) as unread_count
          FROM conversas c
          LEFT JOIN contatos ct ON c.cliente_id = ct.id
          LEFT JOIN agents a ON c.agente_id = a.id
+         LEFT JOIN (
+           SELECT conversa_id, COUNT(*)::int as count
+           FROM mensagens
+           WHERE lida = false AND remetente_tipo = 'customer'
+           GROUP BY conversa_id
+         ) unread ON unread.conversa_id = c.id
          WHERE ${whereClause}
          ORDER BY c.ultima_atividade DESC NULLS LAST, c.updated_at DESC
          LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,

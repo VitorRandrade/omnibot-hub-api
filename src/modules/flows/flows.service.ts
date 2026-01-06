@@ -1,5 +1,5 @@
-import { pool } from '../../config/database.js';
-import { AppError } from '../../shared/errors/AppError.js';
+import { db } from '../../config/database.js';
+import { AppError } from '../../shared/middleware/error.middleware.js';
 import {
   CreateFlowData,
   UpdateFlowData,
@@ -109,7 +109,7 @@ class FlowsService {
     const { page, perPage, type, status, search, sortBy, sortOrder } = params;
     const offset = (page - 1) * perPage;
 
-    // Map sortBy to Portuguese column names
+    // SECURITY: Whitelist allowed sort columns to prevent SQL injection
     const sortColumnMap: Record<string, string> = {
       'created_at': 'created_at',
       'updated_at': 'updated_at',
@@ -117,6 +117,8 @@ class FlowsService {
       'total_execucoes': 'total_execucoes',
     };
     const sortColumn = sortColumnMap[sortBy] || 'created_at';
+    // SECURITY: Validate sortOrder to only allow ASC/DESC
+    const safeSortOrder = sortOrder?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
     let query = `
       SELECT * FROM fluxos
@@ -145,17 +147,17 @@ class FlowsService {
     }
 
     // Count total
-    const countResult = await pool.query(
+    const countResult = await db.query(
       query.replace('SELECT *', 'SELECT COUNT(*)'),
       queryParams
     );
     const total = parseInt(countResult.rows[0].count);
 
-    // Add sorting and pagination
-    query += ` ORDER BY ${sortColumn} ${sortOrder.toUpperCase()} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    // Add sorting and pagination (using validated safeSortOrder)
+    query += ` ORDER BY ${sortColumn} ${safeSortOrder} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     queryParams.push(perPage, offset);
 
-    const result = await pool.query(query, queryParams);
+    const result = await db.query(query, queryParams);
 
     return {
       flows: result.rows.map(mapFlowFromDb),
@@ -167,7 +169,7 @@ class FlowsService {
 
   // Get flow by ID
   async getById(tenantId: string, flowId: string) {
-    const result = await pool.query(
+    const result = await db.query(
       'SELECT * FROM fluxos WHERE id = $1 AND tenant_id = $2',
       [flowId, tenantId]
     );
@@ -181,7 +183,7 @@ class FlowsService {
 
   // Create flow
   async create(tenantId: string, data: CreateFlowData) {
-    const result = await pool.query(
+    const result = await db.query(
       `INSERT INTO fluxos (
         tenant_id, nome, descricao, tipo, trigger_type, trigger_config,
         nodes, edges, variables, tags
@@ -263,7 +265,7 @@ class FlowsService {
 
     values.push(flowId, tenantId);
 
-    const result = await pool.query(
+    const result = await db.query(
       `UPDATE fluxos SET ${updates.join(', ')}
        WHERE id = $${paramIndex++} AND tenant_id = $${paramIndex}
        RETURNING *`,
@@ -275,7 +277,7 @@ class FlowsService {
 
   // Delete flow
   async delete(tenantId: string, flowId: string) {
-    const result = await pool.query(
+    const result = await db.query(
       'DELETE FROM fluxos WHERE id = $1 AND tenant_id = $2 RETURNING id',
       [flowId, tenantId]
     );
@@ -289,7 +291,7 @@ class FlowsService {
 
   // Activate flow
   async activate(tenantId: string, flowId: string) {
-    const result = await pool.query(
+    const result = await db.query(
       `UPDATE fluxos SET status = 'ativo', publicado_em = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND tenant_id = $2
        RETURNING *`,
@@ -305,7 +307,7 @@ class FlowsService {
 
   // Deactivate flow
   async deactivate(tenantId: string, flowId: string) {
-    const result = await pool.query(
+    const result = await db.query(
       `UPDATE fluxos SET status = 'inativo', updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND tenant_id = $2
        RETURNING *`,
@@ -325,7 +327,7 @@ class FlowsService {
     const flow = await this.getById(tenantId, flowId);
 
     // Create execution record
-    const executionResult = await pool.query(
+    const executionResult = await db.query(
       `INSERT INTO execucoes_fluxo (
         tenant_id, fluxo_id, status, trigger_type, trigger_data, input_data
       ) VALUES ($1, $2, 'executando', $3, $4, $5)
@@ -345,7 +347,7 @@ class FlowsService {
     // For now, we'll simulate a successful execution
 
     // Update execution as successful
-    const updatedExecution = await pool.query(
+    const updatedExecution = await db.query(
       `UPDATE execucoes_fluxo SET
         status = 'sucesso',
         output_data = $1,
@@ -361,7 +363,7 @@ class FlowsService {
     );
 
     // Update flow stats
-    await pool.query(
+    await db.query(
       `UPDATE fluxos SET
         total_execucoes = total_execucoes + 1,
         execucoes_sucesso = execucoes_sucesso + 1,
@@ -408,7 +410,7 @@ class FlowsService {
     }
 
     // Count total
-    const countResult = await pool.query(
+    const countResult = await db.query(
       query.replace('SELECT *', 'SELECT COUNT(*)'),
       queryParams
     );
@@ -418,7 +420,7 @@ class FlowsService {
     query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     queryParams.push(perPage, offset);
 
-    const result = await pool.query(query, queryParams);
+    const result = await db.query(query, queryParams);
 
     return {
       executions: result.rows.map(mapExecutionFromDb),
@@ -430,7 +432,7 @@ class FlowsService {
 
   // Get flow stats
   async getStats(tenantId: string) {
-    const result = await pool.query(
+    const result = await db.query(
       `SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE status = 'ativo') as active,
@@ -470,14 +472,14 @@ class FlowsService {
 
     query += ' ORDER BY uso_count DESC';
 
-    const result = await pool.query(query, params);
+    const result = await db.query(query, params);
     return result.rows.map(mapTemplateFromDb);
   }
 
   // Create flow from template
   async createFromTemplate(tenantId: string, templateId: string, name: string) {
     // Get template
-    const templateResult = await pool.query(
+    const templateResult = await db.query(
       'SELECT * FROM templates_fluxo WHERE id = $1',
       [templateId]
     );
@@ -489,7 +491,7 @@ class FlowsService {
     const template = templateResult.rows[0];
 
     // Create flow from template
-    const result = await pool.query(
+    const result = await db.query(
       `INSERT INTO fluxos (
         tenant_id, nome, descricao, tipo, nodes, edges, variables
       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -506,7 +508,7 @@ class FlowsService {
     );
 
     // Increment template usage count
-    await pool.query(
+    await db.query(
       'UPDATE templates_fluxo SET uso_count = uso_count + 1 WHERE id = $1',
       [templateId]
     );
@@ -518,7 +520,7 @@ class FlowsService {
   async duplicate(tenantId: string, flowId: string, newName?: string) {
     const flow = await this.getById(tenantId, flowId);
 
-    const result = await pool.query(
+    const result = await db.query(
       `INSERT INTO fluxos (
         tenant_id, nome, descricao, tipo, trigger_type, trigger_config,
         nodes, edges, variables, tags
