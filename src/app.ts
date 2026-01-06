@@ -17,6 +17,9 @@ import productsRoutes from './modules/products/products.routes.js';
 import imagesRoutes from './modules/images/images.routes.js';
 import documentsRoutes from './modules/documents/documents.routes.js';
 import webhooksRoutes from './modules/webhooks/webhooks.routes.js';
+import conversationsRoutes from './modules/conversations/conversations.routes.js';
+import channelsRoutes from './modules/channels/channels.routes.js';
+import flowsRoutes from './modules/flows/flows.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,6 +71,9 @@ export const createApp = (): Application => {
   app.use(`${apiV1}/images`, imagesRoutes);
   app.use(`${apiV1}/documents`, documentsRoutes);
   app.use(`${apiV1}/webhooks`, webhooksRoutes);
+  app.use(`${apiV1}/conversations`, conversationsRoutes);
+  app.use(`${apiV1}/channels`, channelsRoutes);
+  app.use(`${apiV1}/flows`, flowsRoutes);
 
   // Public routes (no auth required)
   app.use(`${apiV1}/public/images`, imagesRoutes);

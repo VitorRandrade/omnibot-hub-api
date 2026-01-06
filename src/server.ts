@@ -1,6 +1,8 @@
+import { createServer } from 'http';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { testConnection, db } from './config/database.js';
+import { initializeSocket } from './config/socket.js';
 
 const startServer = async (): Promise<void> => {
   try {
@@ -13,7 +15,13 @@ const startServer = async (): Promise<void> => {
 
     const app = createApp();
 
-    const server = app.listen(env.PORT, () => {
+    // Create HTTP server
+    const httpServer = createServer(app);
+
+    // Initialize Socket.IO
+    initializeSocket(httpServer);
+
+    httpServer.listen(env.PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
@@ -22,6 +30,7 @@ const startServer = async (): Promise<void> => {
 ║   Environment: ${env.NODE_ENV.padEnd(40)}║
 ║   Port: ${env.PORT.toString().padEnd(47)}║
 ║   URL: ${env.API_URL.padEnd(48)}║
+║   WebSocket: Enabled                                      ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
       `);
@@ -31,7 +40,7 @@ const startServer = async (): Promise<void> => {
     const gracefulShutdown = async (signal: string): Promise<void> => {
       console.log(`\n${signal} received. Starting graceful shutdown...`);
 
-      server.close(async () => {
+      httpServer.close(async () => {
         console.log('HTTP server closed.');
 
         try {

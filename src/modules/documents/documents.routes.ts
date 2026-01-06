@@ -47,6 +47,28 @@ const upload = multer({
 
 router.use(authenticate);
 
+// Helper to get tenant_id from user
+async function getTenantId(userId: string): Promise<string | null> {
+  const result = await db.query('SELECT tenant_id FROM users WHERE id = $1', [userId]);
+  return result.rows.length > 0 ? result.rows[0].tenant_id : null;
+}
+
+// Map DB document to API response
+function mapDocumentToResponse(doc: any) {
+  return {
+    id: doc.id,
+    user_id: doc.tenant_id,
+    name: doc.nome || doc.name,
+    file_type: doc.tipo || doc.file_type,
+    file_size: doc.tamanho || doc.file_size || 0,
+    file_path: doc.caminho || doc.file_path,
+    mime_type: doc.mime_type,
+    status: doc.status || 'processed',
+    created_at: doc.created_at,
+    updated_at: doc.updated_at,
+  };
+}
+
 // List documents
 router.get('/', async (req, res, next) => {
   try {
@@ -55,23 +77,38 @@ router.get('/', async (req, res, next) => {
     const perPage = parseInt(req.query.perPage as string) || 20;
     const offset = (page - 1) * perPage;
 
-    const countResult = await db.query(
-      'SELECT COUNT(*) FROM documents WHERE user_id = $1',
-      [userId]
-    );
+    const tenantId = await getTenantId(userId);
+    if (!tenantId) {
+      sendSuccess(res, [], 200, { total: 0, page, perPage });
+      return;
+    }
 
-    const result = await db.query(
-      `SELECT * FROM documents WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT $2 OFFSET $3`,
-      [userId, perPage, offset]
-    );
+    try {
+      const countResult = await db.query(
+        'SELECT COUNT(*) FROM documentos WHERE tenant_id = $1',
+        [tenantId]
+      );
 
-    sendSuccess(res, result.rows, 200, {
-      total: parseInt(countResult.rows[0].count),
-      page,
-      perPage,
-    });
+      const result = await db.query(
+        `SELECT * FROM documentos WHERE tenant_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [tenantId, perPage, offset]
+      );
+
+      sendSuccess(res, result.rows.map(mapDocumentToResponse), 200, {
+        total: parseInt(countResult.rows[0].count),
+        page,
+        perPage,
+      });
+    } catch (dbError: any) {
+      // If table doesn't exist, return empty array
+      if (dbError.code === '42P01') {
+        sendSuccess(res, [], 200, { total: 0, page, perPage });
+        return;
+      }
+      throw dbError;
+    }
   } catch (error) {
     next(error);
   }
@@ -81,17 +118,39 @@ router.get('/', async (req, res, next) => {
 router.get('/stats', async (req, res, next) => {
   try {
     const userId = req.user!.userId;
-    const result = await db.query(
-      `SELECT
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE status = 'processed') as processed,
-        COUNT(*) FILTER (WHERE status = 'processing') as processing,
-        COUNT(*) FILTER (WHERE status = 'error') as error
-       FROM documents WHERE user_id = $1`,
-      [userId]
-    );
+    const tenantId = await getTenantId(userId);
 
-    sendSuccess(res, result.rows[0]);
+    if (!tenantId) {
+      sendSuccess(res, { total: 0, processed: 0, processing: 0, error: 0 });
+      return;
+    }
+
+    try {
+      const result = await db.query(
+        `SELECT
+          COUNT(*)::int as total,
+          COUNT(*) FILTER (WHERE status = 'processed' OR status = 'processado')::int as processed,
+          COUNT(*) FILTER (WHERE status = 'processing' OR status = 'processando')::int as processing,
+          COUNT(*) FILTER (WHERE status = 'error' OR status = 'erro')::int as error
+         FROM documentos WHERE tenant_id = $1`,
+        [tenantId]
+      );
+
+      const row = result.rows[0];
+      sendSuccess(res, {
+        total: row.total || 0,
+        processed: row.processed || 0,
+        processing: row.processing || 0,
+        error: row.error || 0,
+      });
+    } catch (dbError: any) {
+      // If table doesn't exist, return zeros
+      if (dbError.code === '42P01') {
+        sendSuccess(res, { total: 0, processed: 0, processing: 0, error: 0 });
+        return;
+      }
+      throw dbError;
+    }
   } catch (error) {
     next(error);
   }
@@ -101,16 +160,22 @@ router.get('/stats', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const userId = req.user!.userId;
+    const tenantId = await getTenantId(userId);
+
+    if (!tenantId) {
+      throw new NotFoundError('Document');
+    }
+
     const result = await db.query(
-      'SELECT * FROM documents WHERE id = $1 AND user_id = $2',
-      [req.params.id, userId]
+      'SELECT * FROM documentos WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, tenantId]
     );
 
     if (result.rows.length === 0) {
       throw new NotFoundError('Document');
     }
 
-    sendSuccess(res, result.rows[0]);
+    sendSuccess(res, mapDocumentToResponse(result.rows[0]));
   } catch (error) {
     next(error);
   }
@@ -130,16 +195,36 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
       return;
     }
 
+    const tenantId = await getTenantId(userId);
+    if (!tenantId) {
+      throw new NotFoundError('User');
+    }
+
     const fileType = path.extname(file.originalname).replace('.', '').toUpperCase();
 
-    const result = await db.query(
-      `INSERT INTO documents (user_id, name, file_type, file_size, file_path, mime_type, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-       RETURNING *`,
-      [userId, file.originalname, fileType, file.size, file.filename, file.mimetype]
-    );
+    try {
+      const result = await db.query(
+        `INSERT INTO documentos (tenant_id, nome, tipo, tamanho, caminho, mime_type, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+         RETURNING *`,
+        [tenantId, file.originalname, fileType, file.size, file.filename, file.mimetype]
+      );
 
-    sendCreated(res, result.rows[0]);
+      sendCreated(res, mapDocumentToResponse(result.rows[0]));
+    } catch (dbError: any) {
+      // If table doesn't exist, try with English column names
+      if (dbError.code === '42P01' || dbError.code === '42703') {
+        const result = await db.query(
+          `INSERT INTO documents (user_id, name, file_type, file_size, file_path, mime_type, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+           RETURNING *`,
+          [userId, file.originalname, fileType, file.size, file.filename, file.mimetype]
+        );
+        sendCreated(res, result.rows[0]);
+        return;
+      }
+      throw dbError;
+    }
   } catch (error) {
     next(error);
   }
@@ -149,9 +234,15 @@ router.post('/upload', upload.single('file'), async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const userId = req.user!.userId;
+    const tenantId = await getTenantId(userId);
+
+    if (!tenantId) {
+      throw new NotFoundError('Document');
+    }
+
     const result = await db.query(
-      'DELETE FROM documents WHERE id = $1 AND user_id = $2 RETURNING id',
-      [req.params.id, userId]
+      'DELETE FROM documentos WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      [req.params.id, tenantId]
     );
 
     if (result.rows.length === 0) {
@@ -168,9 +259,15 @@ router.delete('/:id', async (req, res, next) => {
 router.get('/:id/download', async (req, res, next) => {
   try {
     const userId = req.user!.userId;
+    const tenantId = await getTenantId(userId);
+
+    if (!tenantId) {
+      throw new NotFoundError('Document');
+    }
+
     const result = await db.query(
-      'SELECT * FROM documents WHERE id = $1 AND user_id = $2',
-      [req.params.id, userId]
+      'SELECT * FROM documentos WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, tenantId]
     );
 
     if (result.rows.length === 0) {
@@ -178,10 +275,10 @@ router.get('/:id/download', async (req, res, next) => {
     }
 
     const doc = result.rows[0];
-    const filePath = path.resolve(env.UPLOADS_DIR, 'documents', doc.file_path);
+    const filePath = path.resolve(env.UPLOADS_DIR, 'documents', doc.caminho || doc.file_path);
 
     res.setHeader('Content-Type', doc.mime_type || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${doc.name}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${doc.nome || doc.name}"`);
     res.sendFile(filePath);
   } catch (error) {
     next(error);
