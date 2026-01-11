@@ -107,8 +107,8 @@ export class ChannelsController {
   async generateWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user!.userId;
-      const webhookUrl = await channelsService.generateWebhookUrl(req.params.id, userId);
-      sendSuccess(res, { webhookUrl });
+      const result = await channelsService.generateWebhookUrl(req.params.id, userId);
+      sendSuccess(res, result);
     } catch (error) {
       next(error);
     }

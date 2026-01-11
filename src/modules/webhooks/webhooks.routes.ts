@@ -97,6 +97,76 @@ router.post('/n8n/message', validateWebhookSignature, async (req, res, next) => 
   }
 });
 
+// Receive message from channel via n8n (WhatsApp, Instagram, etc.)
+router.post('/channels/:type/:id', async (req, res, next) => {
+  try {
+    const { type, id } = req.params;
+    const { from, message, metadata, timestamp } = req.body;
+
+    console.log(`[Webhook] Received message for channel ${type}/${id}:`, {
+      from: from?.id || from?.phone,
+      messageType: message?.type,
+    });
+
+    // Verify channel exists and get tenant_id
+    const channelResult = await db.query(
+      `SELECT tenant_id FROM canais WHERE id = $1 AND tipo = $2`,
+      [id, type]
+    );
+
+    if (channelResult.rows.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: { message: 'Channel not found', code: 'CHANNEL_NOT_FOUND' },
+      });
+      return;
+    }
+
+    const tenantId = channelResult.rows[0].tenant_id;
+
+    // Find or create conversation
+    let conversation = await db.query(
+      `SELECT id FROM conversas WHERE cliente_id = $1 AND canal = $2 AND tenant_id = $3`,
+      [from?.id || from?.phone, type, tenantId]
+    );
+
+    let conversationId = conversation.rows[0]?.id;
+
+    if (!conversationId) {
+      // Create new conversation
+      const newConv = await db.query(
+        `INSERT INTO conversas (tenant_id, canal, cliente_id, cliente_nome, status)
+         VALUES ($1, $2, $3, $4, 'aberta')
+         RETURNING id`,
+        [tenantId, type, from?.id || from?.phone, from?.name || 'Cliente']
+      );
+      conversationId = newConv.rows[0].id;
+    }
+
+    // Create message
+    await db.query(
+      `INSERT INTO mensagens (conversa_id, tenant_id, remetente_tipo, conteudo, tipo_mensagem, lida, metadata)
+       VALUES ($1, $2, 'customer', $3, $4, false, $5)`,
+      [
+        conversationId,
+        tenantId,
+        message?.text || JSON.stringify(message),
+        message?.type || 'text',
+        JSON.stringify({ ...metadata, timestamp, from }),
+      ]
+    );
+
+    sendSuccess(res, {
+      received: true,
+      conversationId,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('[Webhook] Error processing channel message:', error);
+    next(error);
+  }
+});
+
 // Receive generic event from n8n
 router.post('/n8n/event', validateWebhookSignature, async (req, res, next) => {
   try {

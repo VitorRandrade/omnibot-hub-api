@@ -473,7 +473,7 @@ export class ChannelsService {
   }
 
   // Gerar webhook URL para o canal
-  async generateWebhookUrl(id: string, userId: string): Promise<string> {
+  async generateWebhookUrl(id: string, userId: string): Promise<{ webhookUrl: string; webhookSecret: string }> {
     const tenantId = await getTenantId(userId);
     if (!tenantId) {
       throw new NotFoundError('User');
@@ -482,19 +482,23 @@ export class ChannelsService {
     const channel = await this.getById(id, userId);
     const webhookUrl = `${process.env.API_URL || 'http://localhost:3001'}/v1/webhooks/channels/${channel.type}/${id}`;
 
+    // Generate a unique secret for this webhook
+    const crypto = await import('crypto');
+    const webhookSecret = crypto.randomBytes(32).toString('hex');
+
     try {
       await db.query(
-        'UPDATE canais SET webhook_url = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
-        [webhookUrl, id, tenantId]
+        'UPDATE canais SET webhook_url = $1, configuracoes = jsonb_set(COALESCE(configuracoes, \'{}\'::jsonb), \'{webhook_secret}\', $2::jsonb), updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
+        [webhookUrl, JSON.stringify(webhookSecret), id, tenantId]
       );
     } catch {
       await db.query(
-        'UPDATE channels SET webhook_url = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
-        [webhookUrl, id, tenantId]
+        'UPDATE channels SET webhook_url = $1, settings = jsonb_set(COALESCE(settings, \'{}\'::jsonb), \'{webhook_secret}\', $2::jsonb), updated_at = NOW() WHERE id = $3 AND tenant_id = $4',
+        [webhookUrl, JSON.stringify(webhookSecret), id, tenantId]
       );
     }
 
-    return webhookUrl;
+    return { webhookUrl, webhookSecret };
   }
 }
 
