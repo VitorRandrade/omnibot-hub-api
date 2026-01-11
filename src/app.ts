@@ -52,6 +52,22 @@ export const createApp = (): Application => {
   // Static files for uploads
   app.use('/uploads', express.static(path.join(__dirname, '..', env.UPLOADS_DIR)));
 
+  // Root route
+  app.get('/', (req, res) => {
+    res.json({
+      name: 'OmniBot Hub API',
+      version: '1.0.0',
+      status: 'running',
+      timestamp: new Date().toISOString(),
+      environment: env.NODE_ENV,
+      endpoints: {
+        health: '/health',
+        api: '/v1',
+        docs: '/v1/docs (coming soon)',
+      },
+    });
+  });
+
   // Health check
   app.get('/health', (req, res) => {
     res.json({
