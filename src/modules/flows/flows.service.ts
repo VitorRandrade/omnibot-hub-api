@@ -388,10 +388,11 @@ class FlowsService {
     let paramIndex = 3;
 
     if (status) {
-      const ptStatus = status === 'running' ? 'executando' :
-                       status === 'success' ? 'sucesso' :
-                       status === 'error' ? 'erro' :
-                       status === 'cancelled' ? 'cancelado' : 'pendente';
+      const statusStr = status as string;
+      const ptStatus = statusStr === 'running' ? 'executando' :
+                       statusStr === 'success' ? 'sucesso' :
+                       statusStr === 'error' ? 'erro' :
+                       statusStr === 'cancelled' ? 'cancelado' : 'pendente';
       query += ` AND status = $${paramIndex}`;
       queryParams.push(ptStatus);
       paramIndex++;

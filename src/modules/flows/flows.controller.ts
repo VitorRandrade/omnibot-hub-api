@@ -7,14 +7,12 @@ import {
   flowQuerySchema,
   executionQuerySchema,
 } from './flows.schema.js';
-import { AuthenticatedRequest } from '../../shared/middleware/auth.middleware.js';
 
 class FlowsController {
   // GET /flows - List flows
   async list(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
 
       const params = flowQuerySchema.parse(req.query);
       const result = await flowsService.list(tenantId, params);
@@ -36,8 +34,7 @@ class FlowsController {
   // GET /flows/stats - Get stats
   async getStats(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
 
       const stats = await flowsService.getStats(tenantId);
 
@@ -68,8 +65,7 @@ class FlowsController {
   // GET /flows/:id - Get flow by ID
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
 
       const flow = await flowsService.getById(tenantId, id);
@@ -86,8 +82,7 @@ class FlowsController {
   // POST /flows - Create flow
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
 
       const data = createFlowSchema.parse(req.body);
       const flow = await flowsService.create(tenantId, data);
@@ -104,8 +99,7 @@ class FlowsController {
   // POST /flows/from-template - Create from template
   async createFromTemplate(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { templateId, name } = req.body;
 
       if (!templateId) {
@@ -129,8 +123,7 @@ class FlowsController {
   // PATCH /flows/:id - Update flow
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
 
       const data = updateFlowSchema.parse(req.body);
@@ -148,8 +141,7 @@ class FlowsController {
   // DELETE /flows/:id - Delete flow
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
 
       await flowsService.delete(tenantId, id);
@@ -166,8 +158,7 @@ class FlowsController {
   // POST /flows/:id/activate - Activate flow
   async activate(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
 
       const flow = await flowsService.activate(tenantId, id);
@@ -184,8 +175,7 @@ class FlowsController {
   // POST /flows/:id/deactivate - Deactivate flow
   async deactivate(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
 
       const flow = await flowsService.deactivate(tenantId, id);
@@ -202,8 +192,7 @@ class FlowsController {
   // POST /flows/:id/execute - Execute flow manually
   async execute(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
 
       const data = executeFlowSchema.parse(req.body);
@@ -221,8 +210,7 @@ class FlowsController {
   // POST /flows/:id/duplicate - Duplicate flow
   async duplicate(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
       const { name } = req.body;
 
@@ -240,8 +228,7 @@ class FlowsController {
   // GET /flows/:id/executions - Get flow executions
   async getExecutions(req: Request, res: Response, next: NextFunction) {
     try {
-      const authReq = req as AuthenticatedRequest;
-      const tenantId = authReq.user.tenant_id || authReq.user.id;
+      const tenantId = req.user!.userId;
       const { id } = req.params;
 
       const params = executionQuerySchema.parse(req.query);
